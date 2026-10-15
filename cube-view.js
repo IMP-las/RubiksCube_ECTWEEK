@@ -67,6 +67,7 @@ const state = {
   inertia: null,
   epoch: 0,
   onIdle: null,
+  onTurnStart: null,
   onMove: null,
 };
 const ui = {

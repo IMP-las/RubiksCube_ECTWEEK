@@ -12,28 +12,37 @@ const INERTIA_RELEASE_MS = 60;
 function swipeToMove(cubieIndex, faceIndex, dx, dy) {
   const cubie = state.cubies[cubieIndex];
   const normal = transform(cubie.rot, FACES[faceIndex].normal);
-  const normalAxis = normal.findIndex(v => v !== 0);
+  const normalAxis = normal.findIndex((v) => v !== 0);
 
   let best = null;
-  [0, 1, 2].filter(i => i !== normalAxis).forEach(i => {
-    const tangent = [0, 0, 0];
-    tangent[i] = 1;
-    const [sx, sy] = screenVector(state.view, tangent);
-    const score = dx * sx + dy * sy;
-    if (!best || Math.abs(score) > Math.abs(best.score)) best = { tangent, score };
-  });
-  const tangent = best.score < 0 ? best.tangent.map(v => -v) : best.tangent;
+  [0, 1, 2]
+    .filter((i) => i !== normalAxis)
+    .forEach((i) => {
+      const tangent = [0, 0, 0];
+      tangent[i] = 1;
+      const [sx, sy] = screenVector(state.view, tangent);
+      const score = dx * sx + dy * sy;
+      if (!best || Math.abs(score) > Math.abs(best.score))
+        best = { tangent, score };
+    });
+  const tangent = best.score < 0 ? best.tangent.map((v) => -v) : best.tangent;
 
   const spin = cross(normal, tangent);
-  const axisIndex = spin.findIndex(v => v !== 0);
+  const axisIndex = spin.findIndex((v) => v !== 0);
   const [sx, sy] = screenVector(state.view, tangent);
   const length = Math.hypot(sx, sy);
   return {
-    move: { axis: AXIS_NAMES[axisIndex], layer: cubie.pos[axisIndex], turns: 1 },
+    move: {
+      axis: AXIS_NAMES[axisIndex],
+      layer: cubie.pos[axisIndex],
+      turns: 1,
+    },
     direction: spin[axisIndex],
     screenDirection: length > 1e-6 ? [sx / length, sy / length] : [1, 0],
     // keeps the touched tile under the pointer: arc length = radius * angle, radius about 1.5 cubies
-    degreesPerPixel: TURN_SPEED_BOOST * (180 / Math.PI) / (1.5 * state.size * Math.max(length, 0.35)),
+    degreesPerPixel:
+      (TURN_SPEED_BOOST * (180 / Math.PI)) /
+      (1.5 * state.size * Math.max(length, 0.35)),
   };
 }
 
@@ -52,23 +61,26 @@ function startInertia(vx, vy) {
     const decay = Math.exp(-INERTIA_FRICTION * dt);
     vx *= decay;
     vy *= decay;
-    state.inertia = Math.hypot(vx, vy) > INERTIA_STOP_SPEED ? requestAnimationFrame(frame) : null;
+    state.inertia =
+      Math.hypot(vx, vy) > INERTIA_STOP_SPEED
+        ? requestAnimationFrame(frame)
+        : null;
   }
   state.inertia = requestAnimationFrame(frame);
 }
 
 function startDrag(e) {
   if (state.drag) return;
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
   stopInertia();
 
-  const face = e.target.closest('.face');
+  const face = e.target.closest(".face");
   const sticker = face && face.dataset.cubie !== undefined ? face : null;
-  let mode = 'view';
-  if (sticker) mode = state.busy ? 'ignore' : 'turn';
+  let mode = "view";
+  if (sticker) mode = state.busy ? "ignore" : "turn";
 
   ui.stage.setPointerCapture(e.pointerId);
-  ui.stage.classList.add('is-dragging');
+  ui.stage.classList.add("is-dragging");
   state.drag = {
     mode,
     pointerId: e.pointerId,
@@ -97,8 +109,9 @@ function trackVelocity(drag, e) {
 function beginLiveTurn(drag, dx, dy) {
   const turn = swipeToMove(drag.cubie, drag.face, dx, dy);
   state.busy = true;
-  drag.mode = 'live';
+  drag.mode = "live";
   drag.live = { ...turn, targets: layerTargets(turn.move), angle: 0, speed: 0 };
+  if (state.onTurnStart) state.onTurnStart();
 }
 
 function updateLiveTurn(drag, e, dx, dy) {
@@ -114,7 +127,7 @@ function moveDrag(e) {
   const drag = state.drag;
   if (!drag || e.pointerId !== drag.pointerId) return;
 
-  if (drag.mode === 'view') {
+  if (drag.mode === "view") {
     const dx = e.clientX - drag.x;
     const dy = e.clientY - drag.y;
     trackVelocity(drag, e);
@@ -126,15 +139,19 @@ function moveDrag(e) {
   trackVelocity(drag, e);
   const dx = e.clientX - drag.startX;
   const dy = e.clientY - drag.startY;
-  if (drag.mode === 'turn' && Math.hypot(dx, dy) > LIVE_START_PIXELS) beginLiveTurn(drag, dx, dy);
-  if (drag.mode === 'live') updateLiveTurn(drag, e, dx, dy);
+  if (drag.mode === "turn" && Math.hypot(dx, dy) > LIVE_START_PIXELS)
+    beginLiveTurn(drag, dx, dy);
+  if (drag.mode === "live") updateLiveTurn(drag, e, dx, dy);
 }
 
 // -1, 0 or 1 quarter turns: a long enough drag or a quick flick turns the layer, otherwise it springs back
 function snapTurns(live) {
   const { angle, speed } = live;
   if (Math.abs(angle) >= SNAP_THRESHOLD_DEGREES) return Math.sign(angle);
-  const flicked = Math.abs(speed) > FLICK_SPEED && Math.abs(angle) > FLICK_MIN_DEGREES && Math.sign(speed) === Math.sign(angle);
+  const flicked =
+    Math.abs(speed) > FLICK_SPEED &&
+    Math.abs(angle) > FLICK_MIN_DEGREES &&
+    Math.sign(speed) === Math.sign(angle);
   return flicked ? Math.sign(angle) : 0;
 }
 
@@ -144,7 +161,8 @@ async function finishLiveTurn(live, cancelled) {
   const target = turns * 90;
   const duration = SNAP_MS * Math.max(0.4, Math.abs(target - live.angle) / 90);
   await animateLayer(live.move, live.direction, live.angle, target, duration);
-  if (turns !== 0 && epoch === state.epoch) commitMove(live.move, live.direction * turns, true);
+  if (turns !== 0 && epoch === state.epoch)
+    commitMove(live.move, live.direction * turns, true);
   else renderCubies();
   state.busy = false;
   runQueue();
@@ -154,18 +172,19 @@ function endDrag(e, cancelled) {
   const drag = state.drag;
   if (!drag || e.pointerId !== drag.pointerId) return;
   state.drag = null;
-  ui.stage.classList.remove('is-dragging');
+  ui.stage.classList.remove("is-dragging");
 
-  if (drag.mode === 'live') finishLiveTurn(drag.live, cancelled);
-  else if (drag.mode === 'view' && !cancelled) {
+  if (drag.mode === "live") finishLiveTurn(drag.live, cancelled);
+  else if (drag.mode === "view" && !cancelled) {
     const recent = e.timeStamp - drag.time < INERTIA_RELEASE_MS;
-    if (recent && Math.hypot(drag.vx, drag.vy) > INERTIA_STOP_SPEED * 3) startInertia(drag.vx, drag.vy);
+    if (recent && Math.hypot(drag.vx, drag.vy) > INERTIA_STOP_SPEED * 3)
+      startInertia(drag.vx, drag.vy);
   }
 }
 
 function enableInput() {
-  ui.stage.addEventListener('pointerdown', startDrag);
-  ui.stage.addEventListener('pointermove', moveDrag);
-  ui.stage.addEventListener('pointerup', e => endDrag(e, false));
-  ui.stage.addEventListener('pointercancel', e => endDrag(e, true));
+  ui.stage.addEventListener("pointerdown", startDrag);
+  ui.stage.addEventListener("pointermove", moveDrag);
+  ui.stage.addEventListener("pointerup", (e) => endDrag(e, false));
+  ui.stage.addEventListener("pointercancel", (e) => endDrag(e, true));
 }
